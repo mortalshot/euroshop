@@ -192,39 +192,101 @@ function initHeaderHeight() {
   const onResize = () => requestAnimationFrame(setVar);
   window.addEventListener("resize", onResize, { passive: true, signal });
 }
+(() => {
+  const clGet = Object.getOwnPropertyDescriptor(Element.prototype, "classList").get;
+  Object.defineProperty(Element.prototype, "classList", {
+    get() {
+      const list = clGet.call(this);
+      if (list.__dbg_wrapped) return list;
+      const el = this;
+      const origRemove = list.remove;
+      const origToggle = list.toggle;
+      list.remove = function(...tokens) {
+        if (tokens.some((t) => t === "_catalog-active" || t === "_search-active")) {
+          console.groupCollapsed("[XRAY] classList.remove", tokens, "на", el);
+          console.trace("СТЕК remove");
+          console.groupEnd();
+        }
+        return origRemove.apply(this, tokens);
+      };
+      list.toggle = function(token, force) {
+        const had = el.classList.contains(token);
+        const res = origToggle.apply(this, [token, force]);
+        const has = el.classList.contains(token);
+        if ((token === "_catalog-active" || token === "_search-active") && had && !has) {
+          console.groupCollapsed("[XRAY] classList.toggle снял", token, "на", el);
+          console.trace("СТЕК toggle");
+          console.groupEnd();
+        }
+        return res;
+      };
+      list.__dbg_wrapped = true;
+      return list;
+    }
+  });
+  const cnDesc = Object.getOwnPropertyDescriptor(Element.prototype, "className");
+  Object.defineProperty(Element.prototype, "className", {
+    get: cnDesc.get,
+    set(v) {
+      const hadCat = this.classList.contains("_catalog-active");
+      const hadSrch = this.classList.contains("_search-active");
+      cnDesc.set.call(this, v);
+      if (hadCat && !this.classList.contains("_catalog-active")) {
+        console.groupCollapsed("[XRAY] className setter снял _catalog-active на", this);
+        console.trace("СТЕК className");
+        console.groupEnd();
+      }
+      if (hadSrch && !this.classList.contains("_search-active")) {
+        console.groupCollapsed("[XRAY] className setter снял _search-active на", this);
+        console.trace("СТЕК className");
+        console.groupEnd();
+      }
+    }
+  });
+})();
 initHeaderHeight();
 const isMenuOpen$1 = () => document.documentElement.hasAttribute("data-fls-menu-open");
-const catalogButtons = document.querySelectorAll(".header-catalog__toggle");
-if (catalogButtons.length > 0) {
-  catalogButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!bodyLockStatus) return;
-      const parent = btn.closest(".header-catalog");
-      if (!parent) return;
-      const isOpening = !parent.classList.contains("_catalog-active");
-      parent.classList.toggle("_catalog-active");
-      if (isOpening) {
-        const activeSearch = document.querySelector(".search._search-active");
-        if (activeSearch) activeSearch.classList.remove("_search-active");
-        if (!isMenuOpen$1()) {
-          bodyLock();
+if (!window.__modsCatalogInit) {
+  window.__modsCatalogInit = true;
+  const catalogButtons = document.querySelectorAll(".header-catalog__toggle");
+  if (catalogButtons.length > 0) {
+    catalogButtons.forEach((btn) => {
+      if (btn.__hcBound) return;
+      btn.__hcBound = true;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (!bodyLockStatus) return;
+        const parent = btn.closest(".header-catalog");
+        if (!parent) return;
+        const isOpening = !parent.classList.contains("_catalog-active");
+        parent.classList.toggle("_catalog-active");
+        if (isOpening) {
+          const activeSearch = document.querySelector(".search._search-active");
+          if (activeSearch) activeSearch.classList.remove("_search-active");
+          if (!isMenuOpen$1()) {
+            bodyLock();
+          }
+        } else {
+          const stillOpenSearch = document.querySelector(".search._search-active");
+          if (!isMenuOpen$1() && !stillOpenSearch) {
+            bodyUnlock();
+          }
         }
-        bodyLock();
-      } else {
-        const stillOpenSearch = document.querySelector(".search._search-active");
-        if (!isMenuOpen$1() && !stillOpenSearch) {
-          bodyUnlock();
-        }
-      }
+      });
     });
-  });
+  }
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" || e.key === "Esc") {
     const activeCatalog = document.querySelector(".header-catalog._catalog-active");
     if (activeCatalog) {
-      bodyLockToggle();
       activeCatalog.classList.remove("_catalog-active");
+      const stillOpenSearch = document.querySelector(".search._search-active");
+      const menuOpen = document.documentElement.hasAttribute("data-fls-menu-open");
+      if (!stillOpenSearch && !menuOpen) {
+        bodyUnlock();
+      }
     }
   }
 });
@@ -415,38 +477,48 @@ if (document.querySelector("[data-fls-dynamic]")) {
 }
 initHeaderHeight();
 const isMenuOpen = () => document.documentElement.hasAttribute("data-fls-menu-open");
-const searchButtons = document.querySelectorAll(".search__toggle");
-if (searchButtons.length > 0) {
-  searchButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!bodyLockStatus) return;
-      const parent = btn.closest(".search");
-      if (!parent) return;
-      const isOpening = !parent.classList.contains("_search-active");
-      parent.classList.toggle("_search-active");
-      if (isOpening) {
-        const activeCatalog = document.querySelector(".header-catalog._catalog-active");
-        if (activeCatalog) {
-          activeCatalog.classList.remove("_catalog-active");
-          return;
+if (!window.__modsSearchInit) {
+  window.__modsSearchInit = true;
+  const searchButtons = document.querySelectorAll(".search__toggle");
+  if (searchButtons.length > 0) {
+    searchButtons.forEach((btn) => {
+      if (btn.__srchBound) return;
+      btn.__srchBound = true;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (!bodyLockStatus) return;
+        const parent = btn.closest(".search");
+        if (!parent) return;
+        const isOpening = !parent.classList.contains("_search-active");
+        parent.classList.toggle("_search-active");
+        if (isOpening) {
+          const activeCatalog = document.querySelector(".header-catalog._catalog-active");
+          if (activeCatalog) {
+            activeCatalog.classList.remove("_catalog-active");
+            return;
+          }
+          if (!isMenuOpen()) bodyLock();
+        } else {
+          const stillOpenCatalog = document.querySelector(".header-catalog._catalog-active");
+          if (!stillOpenCatalog && !isMenuOpen()) {
+            bodyUnlock();
+          }
         }
-        if (isMenuOpen()) return;
-        bodyLock();
-      } else {
-        const stillOpenCatalog = document.querySelector(".header-catalog._catalog-active");
-        if (!stillOpenCatalog && !isMenuOpen()) {
-          bodyUnlock();
-        }
-      }
+      });
     });
-  });
+  }
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" || e.key === "Esc") {
     const activeSearch = document.querySelector(".search._search-active");
     if (activeSearch) {
-      bodyLockToggle();
       activeSearch.classList.remove("_search-active");
+      const stillOpenCatalog = document.querySelector(".header-catalog._catalog-active");
+      const menuOpen = document.documentElement.hasAttribute("data-fls-menu-open");
+      if (!stillOpenCatalog && !menuOpen) {
+        bodyUnlock();
+      }
     }
   }
 });

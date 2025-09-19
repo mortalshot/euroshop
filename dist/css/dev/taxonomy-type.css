@@ -6,7 +6,15 @@
   gap: 1rem;
 }
 .taxonomy-type__heading .select {
-  flex: 0 0 9.75rem;
+  flex: 0 0 10.25rem;
+}
+.taxonomy-type__heading .select__options {
+  padding-block: 0.5rem;
+  margin-inline: -0.5rem;
+  box-shadow: 0 1rem 1rem 0 rgba(50, 50, 71, 0.08);
+}
+.taxonomy-type__heading .select__option {
+  padding-inline: 0.5rem;
 }
 .taxonomy-type__items {
   margin-block: -1.125rem;
